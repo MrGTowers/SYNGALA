@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gbXML Viewer — Volúmenes por Space</title>
+  <style>
+    html, body { height:100%; margin:0; background:#0b0e1a; color:#e7e9ee; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+    #viewer { position: fixed; inset: 0; }
+    .toolbar {
+      position: fixed; left: 12px; top: 12px; z-index: 10; display: flex; gap: 10px; align-items: center;
+      background: rgba(13,16,30,.75); border: 1px solid #28305e; padding: 10px; border-radius: 12px; backdrop-filter: blur(6px);
+    }
+    .btn { background: linear-gradient(180deg, #24306a, #078a58); border: 1px solid #3a4aa0; color: #ffffff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font-weight: 600; font-size: 12px; }
+    .btnRvt { background: linear-gradient(180deg, #078a58, #1b2453); border: 1px solid #3a4aa0; color: #ffffff; border-radius: 10px; padding: 8px 10px; cursor: pointer; font-weight: 600; font-size: 12px;}
+    .btnV { background: transparent; border: 1px solid #3a4aa0; color: #ffffff; border-radius: 10px; padding: 5px 7px; cursor: pointer; font-weight: 600; font-size: 12px; }
+    .btnacc { background: linear-gradient(180deg, #5b2291, #078a58); border: 1px solid #3a4aa0; color: #ffffff; border-radius:10px; padding: 5px 7px; cursor: pointer; font-weight: 600; font-size: 12px;z-index: 999;}
+    .btnacc2 { background: linear-gradient(90deg, #078a58, #1b2453); border: 1px solid #3a4aa0; color: #ffffff; border-radius:10px; padding: 15px 7px; cursor: pointer; font-weight: 600; font-size: 12px; opacity:0.95; }
+    
+      .menu {
+        position: fixed; left: 12px; top: 80px; z-index: 10;
+        display: flex;
+        flex-direction: column;   /* <--- 🔥 clave */
+        align-items: flex-start;  /* <--- Alinea todo a la izquierda */
+        gap: 6px;
+        background: rgba(13, 16, 30, 0);
+        border: 1px solid #28305e00;
+        padding: 10px;
+        border-radius: 12px;
+        backdrop-filter: blur(0px);
+      }
+
+
+      :root {
+        --size: 42px;
+        --bar-w: 22px;
+        --bar-h: 2px;
+        --bar-gap: 6px;
+        --accent: #8aa3ff;
+        --txt: #e8ebff;
+      }
+
+      /* Botón hamburguesa */
+      .menu__toggle {
+        width: var(--size);
+        height: var(--size);
+        display: grid; place-items: center;
+        border: 1px solid #39407a;
+        background: linear-gradient(180deg, #078a58, #1b2453);
+        color: var(--txt);
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .menu__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+      .menu__icon {
+        position: relative;
+        width: var(--bar-w);
+        height: calc(var(--bar-h)*3 + var(--bar-gap)*2);
+        display: inline-block;
+      }
+      .menu__icon::before,
+      .menu__icon::after,
+      .menu__icon span {
+        content: "";
+        position: absolute; left: 0; right: 0;
+        height: var(--bar-h);
+        background: var(--txt);
+        border-radius: 2px;
+        transition: transform .2s ease, opacity .2s ease, top .2s ease, bottom .2s ease;
+      }
+      .menu__icon::before { top: 0; }
+      .menu__icon span   { top: calc(50% - var(--bar-h)/2); }
+      .menu__icon::after { bottom: 0; }
+
+      /* Panel */
+      .menu__panel {
+        display: grid;
+        grid-auto-flow: row;
+        gap: 8px;
+        margin-top: 6px;
+        padding-left: 0;
+        transition: opacity .2s ease, transform .2s ease;
+        opacity: 0;
+        transform: translateY(-6px);
+
+        pointer-events: none;     /* 🔥 Evita clics cuando está oculto */
+      }
+
+      .menu.open .menu__panel {
+        opacity: 1;
+        transform: translateY(0);
+
+        pointer-events: auto;     /* 🔥 Clics permitidos cuando está visible */
+      }
+      /* Botones internos */
+      .menu__btn, .menu__link {
+        border: 1px solid #39407a;
+        background: #0c1126;
+        color: var(--txt);
+        padding: 8px 12px;
+        border-radius: 8px;
+        text-decoration: none;
+        display: inline-flex; align-items: center; gap: 8px;
+        cursor: pointer;
+        
+      }
+      .menu__btn:hover, .menu__link:hover { background: linear-gradient(180deg, #078a58, #6c297c); }
+      .menu__btn:focus-visible, .menu__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+      /* Estado abierto: animación a "X" */
+      .menu.open .menu__icon::before { top: 50%; transform: translateY(-50%) rotate(45deg); }
+      .menu.open .menu__icon span    { opacity: 0; transform: translateX(-6px); }
+      .menu.open .menu__icon::after  { bottom: auto; top: 50%; transform: translateY(-50%) rotate(-45deg); }
+
+      /* Reduce motion */
+      @media (prefers-reduced-motion: reduce) {
+        .menu__icon::before, .menu__icon::after, .menu__icon span,
+        .menu__panel { transition: none; }
+      }
+
+    
+    .muted { color:#a9b0c0; font-size:12px; }
+    .panel {
+      position: fixed; right: 12px; top: 12px; z-index: 10; width: 280px; max-height: calc(100% - 24px);
+      overflow: auto; padding: 12px; border-radius: 12px; background: rgba(13,16,30,.75); border: 1px solid #28305e; backdrop-filter: blur(6px);
+    }
+    .panel h3 { margin: 0 0 8px; font-size: 14px; color:#cfe4ff; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .row > * { flex: 1; }
+    select, input[type="file"] { color:#e7e9ee; background:#0e1122; border:1px solid #28305e; border-radius: 8px; padding:6px 8px; }
+    .kv { display:flex; justify-content:space-between; gap:10px; font-size:12px; padding:6px 8px; border:1px dashed #2a3161; border-radius:8px; margin-top:6px; }
+    .pill { font-size:11px; padding:2px 6px; border:1px solid #33407b; border-radius:999px; color:#d8e5ff; background:#12173a; }
+
+    .logo {height: 50px;width: auto;vertical-align: middle;z-index: 999;} /* LOGO */
+    .logo2 {height: 20px;width: auto;vertical-align: middle;z-index: 999;} /* LOGO */
+    .brand{display:flex;align-items:center;gap:.5rem;font-weight:600; color: inherit;text-decoration: none;} /* TITULO */
+    /* Texto “SYNGALA” del header */
+
+    /* Estado colapsado del panel */
+    #sidePanel.collapsed {
+      width: 320px;                 /* un poco más estrecho */
+      max-height: calc(100% - 24px);
+      overflow: hidden;
+      transition: width 160ms ease, max-height 160ms ease;
+    }
+
+    /* Asegura que el panel deje ver el dropdown si se expande */
+    .panel { overflow: auto; }
+
+    /* Oculta secciones internas cuando está colapsado */
+    #sidePanel.collapsed #spaceInfo,
+    #sidePanel.collapsed #areaBlock,
+    #sidePanel.collapsed #loadsBlock,
+    #sidePanel.collapsed hr {
+      display: none;
+    }
+
+    /* Muestra acciones de colapsado (botón "Generar resumen") */
+    #sidePanel.collapsed #collapsedActions {
+      display: block !important;
+    }
+
+    /* Mantén visible el título y el selector de espacios */
+    #sidePanel.collapsed h3,
+    #sidePanel.collapsed #spaceSelectWrapper {
+      display: block;
+    }
+
+    /* Ajustes visuales */
+    #sidePanel.collapsed .kv { display: none; }   /* por si queda alguna tarjeta suelta */
+
+    /* Contenedor de la lista */
+.selected-list {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+}
+
+/* Cada fila usa el mismo look del dropdown */
+.selected-list .dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 6px 8px;
+  background: #0e1122;
+  border: 1px solid #2e396b;
+  border-radius: 10px;
+}
+
+/* Mismo label del dropdown: nombre + id en línea */
+.selected-list .dd-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.selected-list .dd-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selected-list .dd-id {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #9aa3c7;
+  white-space: nowrap;
+}
+
+/* Borde amarillo como el “activo” del dropdown */
+.selected-list .dd-item.is-checked {
+  outline: 2px solid #d3a93e;   /* ajusta al amarillo de tu UI */
+  outline-offset: 0;
+}
+
+/* Checkbox pequeño como en el dropdown */
+.selected-list .dd-check {
+  width: 16px;
+  height: 16px;
+  accent-color: #d3a93e; /* si usas accent-color */
+  flex: 0 0 auto;
+}
+    
+    .sel-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin: 4px;
+      padding: 4px 8px;
+      border: 1px solid #33407b;
+      border-radius: 999px;
+      background: #12173a;
+      color: #d8e5ff;
+      font-size: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .sel-pill .x {
+      font-weight: 700;
+      opacity: .8;
+    }
+    .sel-pill:hover { background:#171d49; }
+
+
+    /* Dropdown multiselección */
+    .multi-dd { position: relative; width: 100%; }
+    .multi-dd-toggle { width:100%; padding:6px 10px; border-radius:8px; border:1px solid #28305e; background:#0e1122; color:#e7e9ee; text-align:left; cursor:pointer; }
+    .multi-dd-panel { position:absolute; z-index: 20; top:110%; left:0; width:100%; background:#0b0e1a; border:1px solid #28305e; border-radius:10px; padding:8px; display:none; max-height:300px; overflow:auto; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+    .multi-dd.open .multi-dd-panel { display:block; }
+    .multi-dd-search { margin-bottom:6px; }
+    .multi-dd-search input { width:100%; padding:6px 8px; border-radius:8px; border:1px solid #28305e; background:#0e1122; color:#e7e9ee; }
+    .multi-dd-actions { display:flex; gap:8px; margin-bottom:6px; }
+    .multi-dd-actions button { flex:1; border:1px solid #33407b; background:#12173a; color:#d8e5ff; border-radius:8px; padding:6px; cursor:pointer; font-size:12px; }
+    .multi-dd-list { display:flex; flex-direction:column; gap:6px; }
+    .dd-item { display:flex; align-items:center; gap:8px; padding:6px; border:1px dashed #2a3161; border-radius:8px; }
+    .dd-item label { flex:1; cursor:pointer; font-size:12px; }
+    .dd-item small { color:#a9b0c0; }
+    .multi-dd { position: relative; z-index: 30; } /* por encima del contenido */
+    .multi-dd-panel { z-index: 50; }               /* por encima de la toolbar del panel */
+
+    /* En panel colapsado: debajo de "Generar resumen" mostramos grupos por tipología */
+    #groupShortcuts { display:none; margin-top:8px; gap:6px; flex-wrap:wrap; }
+    #sidePanel.collapsed #groupShortcuts { display:flex; }
+    .group-chip { border:1px solid #33407b; background:#12173a; color:#d8e5ff; border-radius:999px; padding:4px 8px; font-size:12px; cursor:pointer; }
+
+    /* --- Toast abajo-izquierda --- */
+    .toast-wrap {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 9999;
+      display: grid;
+      gap: 8px;
+      pointer-events: none; /* que no interfiera con clics del app */
+    }
+
+    .toast {
+      pointer-events: auto;
+      min-width: 220px;
+      max-width: 360px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #28305e;
+      background: rgba(13,16,30,.9);
+      color: #e8ebff;
+      box-shadow: 0 8px 20px rgba(0,0,0,.35);
+      transform: translateY(8px);
+      opacity: 0;
+      transition: opacity .25s ease, transform .25s ease;
+      font: 500 14px/1.3 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .toast.success { border-color: #2e7d32; }
+    .toast.error   { border-color: #b00020; }
+    .toast.info    { border-color: #39407a; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .toast { transition: none; }
+    }
+
+    .dd-item.is-hidden {
+    opacity: .35;
+    pointer-events: none;     /* no permite click */
+    filter: grayscale(20%);
+    }
+
+
+
+  
+    /* ===== Telemetría / Digital Twin (CSV SwitchBot) ===== */
+    #telemetryBlock h3 { margin-top: 0; }
+    #telemetryBlock .hint { font-size: 11px; color:#a9b0c0; margin-top:6px; line-height:1.25; }
+    #telemetryBlock .btnTiny { background: transparent; border: 1px solid #3a4aa0; color:#fff; border-radius:10px; padding:6px 8px; cursor:pointer; font-weight:600; font-size:12px; }
+    #telemetryBlock .btnTinyTest { background: transparent; border: 1px solid #3a4aa0; color:#fff; border-radius:10px; padding:6px 8px; cursor:pointer; font-weight:600; font-size:10px; }
+    #telemetryBlock select, #telemetryBlock input[type="file"] { width: 100%; }
+    #telemetryBlock .telemetryCharts { display:grid; gap:8px; margin-top:8px; }
+    #telemetryBlock svg { width:100%; height:86px; background:#0e1122; border:1px solid #28305e; border-radius:10px; }
+    #telemetryBlock .telemetryStats { display:grid; gap:6px; margin-top:8px; }
+    
+
+/* ===== Floating popover (telemetría) ===== */
+.space-popover{
+  position:fixed;
+  z-index:99999;
+  min-width: 440px;
+  max-width:360px;
+  background:#111827;
+  color:#e5e7eb;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:12px;
+  box-shadow:0 10px 30px rgba(0,0,0,0.35);
+  padding:10px;
+  pointer-events:auto;
+}
+.space-popover::after{
+  content:"";
+  position:absolute;
+  left:18px; top:-8px;
+  border-width:0 8px 8px 8px;
+  border-style:solid;
+  border-color:transparent transparent #111827 transparent;
+  filter:drop-shadow(0 -1px 0 rgba(255,255,255,0.12));
+}
+.space-popover.hidden{ display:none; }
+.space-popover-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.space-popover-title{ font-weight:700; font-size:13px; }
+.space-popover-close{
+  background:transparent; border:0; color:#9ca3af; font-size:18px; line-height:18px;
+  cursor:pointer; padding:2px 6px; border-radius:8px;
+}
+.space-popover-close:hover{ background:rgba(255,255,255,0.08); color:#fff; }
+.space-popover-summary{ margin-top:6px; font-size:12px; color:#cbd5e1; }
+.space-popover-charts{ margin-top:8px; display:grid; grid-template-columns:1fr; gap:10px; }
+.space-popover-chart-title{ font-size:11px; color:#9ca3af; margin-bottom:4px; }
+.space-popover svg{ width:100%; height:70px; background:rgba(255,255,255,0.03); border-radius:8px; }
+
+.space-popover-config{ margin-top:10px; padding:10px; border:1px solid rgba(148,163,184,0.18); border-radius:10px; background:rgba(255,255,255,0.02); }
+.space-popover-config-row{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:8px; }
+.space-popover-config-row label{ font-size:11px; color:#cbd5e1; display:flex; flex-direction:column; gap:4px; }
+.space-popover-config-row input{ background:#0c1126; border:1px solid rgba(148,163,184,0.25); color:#e8ebff; border-radius:8px; padding:6px 8px; font-size:12px; }
+.space-popover-config-row:nth-child(2){ grid-template-columns: 1fr 1fr 1fr; }
+.space-popover-config-row:nth-child(3){ grid-template-columns: 1fr auto; align-items:center; }
+.space-popover-config-help{ font-size:11px; color:#9ca3af; }
+.space-popover-save{ background: linear-gradient(180deg, #078a58, #1b2453); border:1px solid #3a4aa0; color:#fff; border-radius:10px; padding:8px 10px; cursor:pointer; font-weight:700; font-size:12px; }
+.space-popover-save:hover{ filter:brightness(1.05); }
+
+
+  /* DT operativo: ocultar elementos de modelado (por ahora) */
+  #btnAssemblies, #btnSimulate, #assignBox { display: none !important; }
+
+
+/* LIVE badge in popover */
+.live-badge{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12px;letter-spacing:.4px;padding:2px 8px;border-radius:999px;background:rgba(0,0,0,.08);margin-left:8px}
+.live-badge.hidden{display:none !important;}
+.live-dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:#999;box-shadow:0 0 0 2px rgba(0,0,0,.08) inset}
+.live-dot.ok{background:#d11;}      /* red as requested when connected */
+.live-dot.stale{background:#f0a500;}
+.live-dot.err{background:#9aa0a6;}
+
+/* ===== MODO VISOR (ocultar editor/simulación siempre) ===== */
+/* Mostrar SOLO el div que contiene el selector de tipología */
+#loadsBlock > div:has(#space_type) {
+  display: block !important;
+}
+
+/* Todo lo demás oculto */
+#loadsBlock > div:not(:has(#space_type)),
+#loadsBlock h3,
+#loadsBlock .kv,
+#loadsBlock .row,
+#loadsBlock .muted {
+  display: none !important;
+}
+/* Ocultar elementos específicos */
+#assignBox,
+#btnAssemblies,
+#btnSimulate,
+#btnApplyAsm,
+#inDT,
+#inPeople,
+#inLtg,
+#inEquip,
+#selAsmWall,
+#selAsmRoof,
+#selAsmFloor,
+#selAsmWin {
+  display: none !important;
+}
+
+
+
+
+    /* --- Panel de alertas (persistente) --- */
+    .dt-alerts-wrap{
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 9998;
+      display: grid;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .dt-alert-item{
+      pointer-events: auto;
+      min-width: 240px;
+      max-width: 380px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #28305e;
+      background: rgba(13,16,30,0.92);
+      color: #e8ebff;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+      cursor: pointer;
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .dt-alert-badge{
+      width:10px;height:10px;min-width:10px;
+      border-radius:50%;
+      margin-top:4px;
+    }
+    .dt-alert-title{ font-weight:700; font-size:12px; line-height:1.2; }
+    .dt-alert-msg{ font-size:12px; opacity:0.9; margin-top:2px; line-height:1.25; }
+    .dt-alert-item:hover{ transform: translateY(-1px); }
+    .dt-alert-item:active{ transform: translateY(0px); }
+
+</style>
+</head>
+<body>
+  <div class="toolbar">
+             <img src="assets/logo.png" alt="Syngala logo" class="logo">
+   <span>SYNGALA</span>
+    
+    <button id="btnImportGbxml" class="btn">Import gbXML</button>
+    <input id="file" type="file" accept=".xml,.gbxml" style="display:none" />
+    <button id="btnReset" class="btn">Reenfocar</button>
+    <label class="muted" style="display:none;"><input id="chkEdges" type="checkbox" /> Aristas</label>
+    <label class="muted"><input id="chkWindows" type="checkbox" checked /> Ventanas</label>
+    <div id="visControls" class="muted" style="display:flex; gap:6px; align-items:center;">
+    <span>Visibilidad:</span>
+    <button id="btnHideSel" class="btnV">Ocultar</button>
+    <button id="btnIsolateSel" class="btnV">Aislar</button>
+    <button id="btnShowAll" class="btnV">Mostrar todo</button>
+    
+  </div>
+    <label class="muted">Unidades:
+      <select id="unitSelect">
+        <option value="si" selected>SI (m² / m³)</option>
+        <option value="ip">IP (ft² / ft³)</option>
+        
+      </select>
+    </label>
+    
+    <button id="btnAssemblies" class="btnacc">Editor de cerramientos</button>
+    <button id="btnSimulate" class="btnacc2">Generar IDF y simular
+      <img src="assets/logo.png" alt="Syngala logo" class="logo2">
+    </button>
+
+
+  </div>
+
+
+   <div class="menu" id="menu" data-menu>
+    <button class="menu__toggle" id="menuToggle"
+            aria-expanded="false" aria-controls="menuPanel" aria-label="Abrir menú">
+      <span class="menu__icon"><span></span></span>
+    </button>
+    <nav class="menu__panel" id="menuPanel" hidden>
+      <button id="btnInicio" class="menu__link">Inicio</button>
+      <button id="btnSaveProject" class="menu__link">Guardar proyecto</button>
+      <button id="btnLoadProject" class="menu__link">Cargar proyecto</button>
+      <button id="btnNewProject" class="menu__link">Nuevo proyecto</button>
+      
+      <!-- inputs ocultos -->
+      <input id="projectLoadInput" type="file" accept=".json" style="display:none">
+    </nav>
+  </div>
+
+  
+
+
+<div class="panel" id="sidePanel">
+  <h3>Digital Twin</h3>
+  <div class="muted" style="margin-top:-4px; margin-bottom:10px;">Operación (sensores, setpoints y alertas)</div>
+
+  <h3>Espacios</h3>
+    <div class="row" id="spaceSelectWrapper">
+    <div class="multi-dd" id="spaceMultiDd">
+      <button type="button" class="multi-dd-toggle" id="spaceDdToggle">
+        Selecciona espacios (0)
+      </button>
+      <!-- Resumen de multiselección -->
+      <div id="selectionSummary" class="kv" style="display:none; cursor:pointer;">
+        <span><b>Seleccionados</b></span>
+        <span class="pill" id="selectionCount">0</span>
+      </div>
+      
+
+      <!-- Lista desplegable de seleccionados -->
+      <div id="selectedList" class="selected-list" style="display:none; margin-top:6px;"></div>
+      <!--Panel de busqueda -->
+      <div class="multi-dd-panel" id="spaceDdPanel">
+        <div class="multi-dd-search">
+          <input type="text" id="spaceDdFilter" placeholder="Buscar…" />
+        </div>
+        <div class="multi-dd-actions">
+          <button type="button" id="spaceDdSelAll">Todo</button>
+          <button type="button" id="spaceDdSelNone">Nada</button>
+        </div>
+        <div class="multi-dd-list" id="spaceDdList"></div>
+      </div>
+    </div>
+    <!-- Select oculto por compatibilidad -->
+    <select id="spaceSelect" style="display:none;"></select>
+  </div>
+
+  <!-- Visible solo con panel colapsado -->
+  <div id="collapsedActions" style="margin-top:10px; display:none;">
+    <button id="btnSummary" class="btn" style="width:100%;">Generar resumen</button>
+    <div id="groupShortcuts"></div>
+  </div>
+
+  <div id="spaceInfo" style="margin-top:10px;">
+    <div class="kv"><span>Selecciona un espacio…</span></div>
+  </div>
+
+  <hr style="border:0;border-top:1px solid #28305e;margin:10px 0;">
+
+  <div id="areaBlock">
+    <h3>Áreas & Volumen</h3>
+    <div class="kv"><span>Floor area</span><span class="pill" id="kvFloor">—</span></div>
+    <div class="kv"><span>Window area</span><span class="pill" id="kvWin">—</span></div>
+    <div class="kv"><span>Total area</span><span class="pill" id="kvTotal">—</span></div>
+    <div class="kv"><span>Volumen</span><span class="pill" id="kvVol">—</span></div>
+  </div>
+
+  <hr style="border:0;border-top:1px solid #28305e;margin:10px 0;">
+
+  <!--
+    Bloques de simulación (cargas/cerramientos) se esconden en modo Digital Twin.
+    Los dejamos en el HTML para re-activarlos más adelante sin romper IDs ni JS.
+  -->
+  <div id="loadsBlock" style="display:none;">
+    <h3>Simulación (oculto)</h3>
+
+    <div>
+      <label>Tipología de espacio</label>
+      <select id="space_type">
+        <option value="aseos">Aseos</option>
+        <option value="auditorio">Auditorio</option>
+        <option value="biblioteca">Biblioteca</option>
+        <option value="cafeteria_restaurante">Cafetería / Restaurante</option>
+        <option value="comercio_retail">Comercio (Retail)</option>
+        <option value="cuarto_maquinas">Cuarto de máquinas</option>
+        <option value="oficinas">Oficinas</option>
+        <option value="educacion_aula">Educación (Aula)</option>
+        <option value="educacion_laboratorio">Educación (Laboratorio)</option>
+        <option value="estacionamiento">Estacionamiento</option>
+        <option value="hospital_habitacion">Hospital (Habitación paciente)</option>
+        <option value="hospital_quirofano">Hospital (Quirófano)</option>
+        <option value="hotel_habitacion">Hotel (Habitación)</option>
+        <option value="hotel_area_comun">Hotel (Área común)</option>
+        <option value="industria_ligera">Industria ligera</option>
+        <option value="lobby_recepcion">Lobby / Recepción</option>
+        <option value="museo_galeria">Museo / Galería</option>
+        <option value="pasillo_circulacion">Pasillo / Circulación</option>
+        <option value="sala_conferencias">Sala de conferencias</option>
+        <option value="sala_espera">Sala de espera</option>
+        <option value="sala_servidores">Sala de servidores</option>
+        <option value="sala_mecanica">Sala mecánica</option>
+        <option value="sala_recreativa">Sala recreativa</option>
+        <option value="tiendas">Tiendas</option>
+        <option value="vestuarios">Vestuarios</option>
+        <option value="residencial">Residencial</option>
+        <option value="plenum">Plenum</option>
+        <option value="adjacent_space">Espacio adyacente</option>
+      </select>
+    </div>
+
+    <div class="kv"><span>ΔT (K)</span><span><input id="inDT" type="number" step="0.5" value="10" style="width:90px;"></span></div>
+
+    <!--<div style="margin-top:6px; font-size:12px; color:#a9b0c0;">U-values (W/m²·K)</div>
+    <div class="kv"><span>Wall U</span><span><input id="inUWall" type="number" step="0.05" value="0.60" style="width:90px;"></span></div>
+    <div class="kv"><span>Roof U</span><span><input id="inURoof" type="number" step="0.05" value="0.30" style="width:90px;"></span></div>
+    <div class="kv"><span>Floor U</span><span><input id="inUFloor" type="number" step="0.05" value="0.45" style="width:90px;"></span></div>
+    <div class="kv"><span>Window U</span><span><input id="inUWindow" type="number" step="0.05" value="2.60" style="width:90px;"></span></div>-->
+    
+    <div id="assignBox" style="margin-top:8px;">
+      <h3>Asignar cerramientos</h3>
+      <div class="kv"><span>Fachada</span><span><select id="selAsmWall"></select></span></div>
+      <div class="kv"><span>Cubierta</span><span><select id="selAsmRoof"></select></span></div>
+      <div class="kv"><span>Suelo</span><span><select id="selAsmFloor"></select></span></div>
+      <div class="kv"><span>Ventana</span><span><select id="selAsmWin"></select></span></div>
+      <div class="row"><button id="btnApplyAsm" class="btn" style="width:100%;">Aplicar a selección</button></div>
+    </div>
+
+
+
+    <div style="margin-top:6px; font-size:12px; color:#a9b0c0;">Cargas internas</div>
+    <div class="kv"><span>Ocupación (pers)</span><span><input id="inPeople" type="number" step="1" value="0" style="width:90px;"></span></div>
+    <div class="kv"><span>Iluminación (W/m²)</span><span><input id="inLtg" type="number" step="1" value="8" style="width:90px;"></span></div>
+    <div class="kv"><span>Equipos (W/m²)</span><span><input id="inEquip" type="number" step="1" value="10" style="width:90px;"></span></div>
+
+    <div class="kv" style="margin-top:8px;"><span>Transmisión</span><span class="pill" id="kvQTrans">—</span></div>
+    <div class="kv"><span>Internas</span><span class="pill" id="kvQInt">—</span></div>
+    <div class="kv"><span><b>Total</b></span><span class="pill" id="kvQTot">—</span></div>
+
+    <div class="muted" style="margin-top:6px;">Inputs en SI. El selector SI/IP solo cambia salidas.</div>
+  </div>
+
+  <div id="telemetryBlock">
+    <h3>Sensores</h3>
+
+    <div class="row">
+      <button id="btnImportCsv" class="btnTiny">Importar CSV</button>
+      <input id="csvFile" type="file" accept=".csv" style="display:none" />
+    </div>
+
+  <div class="row live-row" style="
+  margin-top:6px;
+  width:100%;
+  display:flex;
+  justify-content:flex-start;
+  align-items:center;
+  gap:8px;
+">
+  <span id="liveDot" title="SYNLIVE" style="
+    width:10px;height:10px;min-width:10px;
+    border-radius:50%;
+    background:#6b7280;
+    display:inline-block;
+    flex:0 0 auto;
+    box-shadow:0 0 0 2px rgba(0,0,0,0.25) inset;
+  "></span>
+
+  <input type="checkbox" id="chkLive" style="flex:0 0 auto;" />
+
+  <span style="font-size:12px;color:#cbd5e1;white-space:nowrap;flex:0 0 auto;">
+    Live (SYNLIVE)
+  </span>
+
+  <input id="liveBase" type="text" value="http://localhost:8787" style="
+    flex:1 1 auto;
+    min-width:120px;
+    background:#0c1126;
+    border:1px solid rgba(255,255,255,0.15);
+    color:#e8ebff;
+    border-radius:8px;
+    padding:6px 8px;
+    font-size:12px;
+  "/>
+</div>
+
+
+  <!-- Test debajo -->
+  <div class="row live-test-row" style="margin-top:6px;">
+    <button id="btnLiveTest" class="btnTinyTest" title="Probar conexión">Test</button>
+  </div>
+
+  <div id="liveMsg" class="hint" style="margin-top:6px;">
+    Live desactivado. Actívalo para leer <code>/api/sensors/latest</code> y llenar las gráficas automáticamente.
+  </div>
+
+
+    <div class="kv"><span>Sensor</span><span>
+      <select id="selSensor">
+        <option value="">— (importa un CSV)</option>
+      </select>
+    </span></div>
+
+    <div class="row" style="margin-top:6px;">
+      <button id="btnAssignSensor" class="btnTiny" title="Asigna el sensor al espacio seleccionado (solo si hay 1 seleccionado)">Asignar a espacio</button>
+    </div>
+
+    <div id="telemetrySummary" class="hint">Selecciona 1 espacio y pulsa “Asignar a espacio”. Al clicar el espacio verás el bocadillo con gráficas, setpoints y alertas.</div>
+  </div>
+
+</div>
+
+  <div id="viewer"></div>
+
+  <div id="spacePopover" class="space-popover hidden">
+    <div class="space-popover-header">
+      <div id="spacePopoverTitle" class="space-popover-title">Espacio</div>
+      <div id="spacePopoverLiveBadge" class="live-badge hidden"><span id="spacePopoverLiveDot" class="live-dot"></span>LIVE</div>
+      <button id="btnClosePopover" class="space-popover-close" title="Cerrar">×</button>
+    </div>
+    <div id="spacePopoverSummary" class="space-popover-summary"></div>
+
+    <div id="spacePopoverRange" class="space-popover-range">
+      <button class="spr-btn" data-range="2h">2h</button>
+      <button class="spr-btn active" data-range="24h">24h</button>
+      <button class="spr-btn" data-range="7d">7d</button>
+      <button class="spr-btn" data-range="all">Todo</button>
+    </div>
+
+
+    <div class="space-popover-config">
+      <div class="space-popover-config-row">
+        <label>Setpoint día (°C)<input id="spDay" type="number" step="0.1"></label>
+        <label>Setpoint noche (°C)<input id="spNight" type="number" step="0.1"></label>
+      </div>
+      <div class="space-popover-config-row">
+        <label>Tolerancia (±°C)<input id="spTol" type="number" step="0.1"></label>
+        <label>HR warn (%)<input id="spHrWarn" type="number" step="1"></label>
+        <label>HR alarm (%)<input id="spHrAlarm" type="number" step="1"></label>
+      </div>
+      <div class="space-popover-config-row">
+        <div class="space-popover-config-help">Día: 07:00–09:00 y 19:30–23:30 · Noche: resto</div>
+        <button id="btnSaveSpaceCfg" class="space-popover-save">Guardar</button>
+      </div>
+    </div>
+
+    <div class="space-popover-charts">
+      <div class="space-popover-chart">
+        <div class="space-popover-chart-title">Temp (°C)</div>
+        <svg id="spacePopoverTemp" viewBox="0 0 240 70" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="space-popover-chart">
+        <div class="space-popover-chart-title">HR (%)</div>
+        <svg id="spacePopoverRh" viewBox="0 0 240 70" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+  </div>
+
+
+
+  <!-- Three r134 + OrbitControls UMD compatibles -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+
+  <!-- Tu app -->
+  <script src="./js/modeller.js"></script>
+
+  <!-- ===== Modal básico ===== -->
+  <div id="basicModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; color:#111; padding:16px; border-radius:6px; width:300px; text-align:center; font-family:sans-serif;">
+      <div id="basicModalMsg" style="margin-bottom:14px;">¿Deseas guardar antes de salir?</div>
+      <div style="display:flex; gap:8px; justify-content:center;">
+        <button id="basicModalCancel"  type="button">Cancelar</button>
+        <button id="basicModalNoSave"  type="button">Salir sin guardar</button>
+        <button id="basicModalYesSave" type="button">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <div id="dtAlertsWrap" class="dt-alerts-wrap" aria-live="polite" aria-atomic="true" style="display:none"></div>
+<!-- Panel de incidencias (lógica existente en modeller.js) -->
+<div id="dtAlertsPanel" style="position:fixed;left:14px;bottom:14px;z-index:9999;display:none;max-width:340px;"></div>
+</body>
+</html>
